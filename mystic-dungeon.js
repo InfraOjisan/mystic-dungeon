@@ -218,7 +218,7 @@ function genLevel(g) {
         const xp=Math.max(1,Math.floor(200*sc));
         const atk=Math.max(0,Math.floor(12*sc*g.dmg_scale));
         const pdf=Math.max(0,Math.floor(10*sc*g.dmg_scale));
-        const boss=new Entity(rl.cx,rl.cy,'🐉','Boss Wyrm','monster',true,'Boss Wyrm',
+        const boss=new Entity(rl.cx,rl.cy,'🐉','monster',true,'Boss Wyrm',
             hp,hp,xp,atk,atk,pdf,pdf,0.1,2.0,null);
         boss.rare_bearer=true;
         g.entities.push(boss);
@@ -474,6 +474,7 @@ function loadGame(g,slot) {
         const d=DIFF[g.diff]||DIFF[2];
         g.dmg_scale=d.dmg; g.spawn_scale=d.spawn; g.item_scale=d.item;
         g.FOV_RADIUS=d.fov; g.min_room=d.minR; g.max_room=d.maxR; g.max_rooms=d.maxRooms;
+        g.goldMul=d.goldMul; g.shopPriceMul=d.shopPriceMul; g.maxFloor=d.maxFloor;
         g.map=data.map; g.explored=data.explored; g.visible=data.visible;
         g.messages=data.messages||[]; g.game_over=false; g.rooms=[];
         g.rare_dropped_this_floor=data.rare_dropped_this_floor||false;
@@ -566,7 +567,7 @@ function loadAutosave(g) {
         const d=DIFF[g.diff]||DIFF[2];
         g.dmg_scale=d.dmg; g.spawn_scale=d.spawn; g.item_scale=d.item;
         g.FOV_RADIUS=d.fov; g.min_room=d.minR; g.max_room=d.maxR; g.max_rooms=d.maxRooms;
-        g.goldMul=d.goldMul; g.shopPriceMul=d.shopPriceMul;
+        g.goldMul=d.goldMul; g.shopPriceMul=d.shopPriceMul; g.maxFloor=d.maxFloor;
         g.map=data.map; g.explored=data.explored; g.visible=data.visible;
         g.messages=data.messages||[]; g.game_over=false; g.rooms=[];
         g.rare_dropped_this_floor=data.rare_dropped_this_floor||false;
