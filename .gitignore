@@ -1,0 +1,8 @@
+.DS_Store
+rogue.py
+wiz.py
+specification.md
+session-*.md
+version/
+aiops_test/
+create_vm_test/
