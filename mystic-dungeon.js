@@ -148,10 +148,12 @@ class Game {
         this.FOV_RADIUS=d.fov; this.min_room=d.minR; this.max_room=d.maxR;
         this.max_rooms=d.maxRooms;
         this.goldMul=d.goldMul; this.shopPriceMul=d.shopPriceMul;
+        this.maxFloor=d.maxFloor;
         this.map=null; this.explored=null; this.visible=null;
         this.rooms=[]; this.entities=[]; this.items=[]; this.messages=[];
         this.player=null; this.game_over=false; this.dlvl=1;
         this.current_slot=0; this.rare_dropped_this_floor=false;
+        this.victory=false;
     }
     add_msg(m) {
         this.messages.push(m);
@@ -160,9 +162,9 @@ class Game {
 }
 
 const DIFF = {
-    1: {mw:30,mh:18,dmg:0.5,spawn:0.6,item:1.5,fov:8,minR:3,maxR:7,maxRooms:7,goldMul:3,shopPriceMul:0.5},
-    2: {mw:40,mh:24,dmg:1,spawn:1,item:1,fov:6,minR:4,maxR:8,maxRooms:9,goldMul:1,shopPriceMul:1},
-    3: {mw:40,mh:24,dmg:1.5,spawn:1.4,item:0.6,fov:5,minR:4,maxR:8,maxRooms:12,goldMul:0.6,shopPriceMul:1.5},
+    1: {mw:30,mh:18,dmg:0.5,spawn:0.6,item:1.5,fov:8,minR:3,maxR:7,maxRooms:7,goldMul:3,shopPriceMul:0.5,maxFloor:10},
+    2: {mw:40,mh:24,dmg:1,spawn:1,item:1,fov:6,minR:4,maxR:8,maxRooms:9,goldMul:1,shopPriceMul:1,maxFloor:100},
+    3: {mw:40,mh:24,dmg:1.5,spawn:1.4,item:0.6,fov:5,minR:4,maxR:8,maxRooms:12,goldMul:0.6,shopPriceMul:1.5,maxFloor:Infinity},
 };
 
 // ── Map Gen ──────────────────────────────────────────────────────────────
@@ -207,8 +209,21 @@ function genLevel(g) {
     g.player.x=r0.cx; g.player.y=r0.cy;
 
     const rl=g.rooms[g.rooms.length-1];
-    if (g.rooms.length>1)
+    const bossFloor = g.maxFloor!==Infinity && g.dlvl >= g.maxFloor;
+    if (g.rooms.length>1 && !bossFloor)
         g.items.push(new Item(rl.cx,rl.cy,'🔽','Stairs Down','stairs'));
+    if (bossFloor) {
+        const sc=1+(g.dlvl-1)*0.3;
+        const hp=Math.max(1,Math.floor(300*sc*g.dmg_scale));
+        const xp=Math.max(1,Math.floor(200*sc));
+        const atk=Math.max(0,Math.floor(12*sc*g.dmg_scale));
+        const pdf=Math.max(0,Math.floor(10*sc*g.dmg_scale));
+        const boss=new Entity(rl.cx,rl.cy,'🐉','Boss Wyrm','monster',true,'Boss Wyrm',
+            hp,hp,xp,atk,atk,pdf,pdf,0.1,2.0,null);
+        boss.rare_bearer=true;
+        g.entities.push(boss);
+        g.add_msg('A mighty dragon blocks your path!');
+    }
 
     const spawnCount=Math.max(1,Math.floor(3*g.spawn_scale));
     for (let ri=1;ri<g.rooms.length;ri++) {
@@ -535,6 +550,14 @@ function autosaveExists() {
 function clearAutosave() {
     localStorage.removeItem(AS_KEY);
 }
+const SCORE_KEY = 'md_score';
+function getScore() {
+    try { return JSON.parse(localStorage.getItem(SCORE_KEY))||{best:0,attempts:0}; }
+    catch(e) { return {best:0,attempts:0}; }
+}
+function saveScore(s) {
+    localStorage.setItem(SCORE_KEY,JSON.stringify(s));
+}
 function loadAutosave(g) {
     try {
         const data=JSON.parse(localStorage.getItem(AS_KEY));
@@ -578,6 +601,7 @@ function draw(ctx, g, state, extra) {
     if (state==='playing') drawMap(ctx,g);
     else if (state==='title') drawTitle(ctx,g,extra);
     else if (state==='gameover') drawGameOver(ctx,g);
+    else if (state==='victory') drawVictory(ctx,g);
     else if (state==='battle') drawBattle(ctx,g,extra);
     else if (state==='inventory') drawInventory(ctx,g,extra);
     else if (state==='shop') drawShop(ctx,g,extra);
@@ -670,9 +694,14 @@ function drawTitle(ctx,g,extra) {
         ctx.font='16px monospace'; ctx.fillStyle=C.prompt;
         ctx.fillText('Select Difficulty:',cx,y);
         ctx.fillStyle=C.text; ctx.font='14px monospace';
-        ctx.fillText('[1] Easy — Small map, weak foes',cx,y+30);
-        ctx.fillText('[2] Middle (Recommended)',cx,y+55);
-        ctx.fillText('[3] Hard — Many tough monsters',cx,y+80);
+        ctx.fillText('[1] Easy — 10F boss, gold 3x, shop half price',cx,y+30);
+        ctx.fillText('[2] Middle — 100F boss (Recommended)',cx,y+55);
+        ctx.fillText('[3] Hard — Endless, record best floor',cx,y+80);
+        const sc=getScore();
+        if (sc.best>0||sc.attempts>0) {
+            ctx.fillStyle=C.dim; ctx.font='12px monospace';
+            ctx.fillText('Hard record: Floor '+sc.best+' / Attempts: '+sc.attempts,cx,y+110);
+        }
         ctx.fillStyle=C.dim; ctx.fillText('Press 1/2/3',cx,y+120);
     }
     ctx.fillStyle=C.dim; ctx.font='12px monospace';
@@ -680,16 +709,36 @@ function drawTitle(ctx,g,extra) {
     ctx.textAlign='left';
 }
 function drawGameOver(ctx,g) {
-    const cx=canvasW/2, cy=canvasH/2-40;
+    const cx=canvasW/2, cy=canvasH/2-50;
     ctx.textAlign='center';
     ctx.fillStyle=C.hpLow; ctx.font='bold 28px monospace';
     ctx.fillText('GAME OVER',cx,cy);
     ctx.fillStyle=C.text; ctx.font='16px monospace';
     ctx.fillText('Level: '+g.dlvl+'  Gold: '+g.player.gold, cx, cy+40);
     ctx.fillText('XP: '+g.player.xp+'  HP: '+g.player.max_hp, cx, cy+65);
+    const sc=getScore();
+    if (g.diff===3) {
+        ctx.fillStyle=C.dim; ctx.font='13px monospace';
+        ctx.fillText('Best: Floor '+sc.best+' / Attempts: '+sc.attempts, cx, cy+90);
+    }
     ctx.font='14px monospace';
     ctx.fillStyle=C.prompt;
-    ctx.fillText('[r] Restart    [s] Strong New Game    [q] Quit', cx, cy+105);
+    ctx.fillText('[r] Restart    [s] Strong New Game    [q] Quit', cx, cy+115);
+    ctx.textAlign='left';
+}
+function drawVictory(ctx,g) {
+    const cx=canvasW/2, cy=canvasH/2-60;
+    ctx.textAlign='center';
+    ctx.fillStyle=C.gold; ctx.font='bold 28px monospace';
+    ctx.fillText('🎉 VICTORY! 🎉',cx,cy);
+    ctx.fillStyle=C.title; ctx.font='bold 20px monospace';
+    ctx.fillText('The dragon has been defeated!',cx,cy+40);
+    ctx.fillStyle=C.text; ctx.font='16px monospace';
+    ctx.fillText('Floor: '+g.dlvl+'  Gold: '+g.player.gold, cx, cy+80);
+    ctx.fillText('XP: '+g.player.xp+'  HP: '+g.player.max_hp, cx, cy+105);
+    ctx.font='14px monospace';
+    ctx.fillStyle=C.prompt;
+    ctx.fillText('[s] Strong New Game    [n] New Game    [q] Quit', cx, cy+145);
     ctx.textAlign='left';
 }
 function drawBattle(ctx,g,extra) {
@@ -942,6 +991,16 @@ async function gameOverScreen(g) {
     }
 }
 
+async function victoryScreen(g) {
+    draw(ctx,g,'victory');
+    while (true) {
+        const k=await waitKey();
+        if (k==='s'||k==='S') return 'strong';
+        if (k==='n'||k==='N') return 'new';
+        if (k==='q'||k==='Q') return 'quit';
+    }
+}
+
 async function battleScreen(g,enemy,playerFirst) {
     let playerTurn=playerFirst;
     while (enemy.hp>0&&g.player.hp>0) {
@@ -969,6 +1028,8 @@ async function battleScreen(g,enemy,playerFirst) {
                 g.entities=g.entities.filter(e=>e!==enemy);
                 levelUp(g);
                 enemyDrop(g,enemy);
+                if (g.dlvl>=g.maxFloor&&g.entities.filter(e=>e!==g.player).length===0)
+                    return 'victory';
                 return true;
             }
         } else {
@@ -1136,7 +1197,7 @@ async function playGame() {
             g.game_over=false;
         }
 
-        while (g&&!g.game_over) {
+        while (g&&!g.game_over&&!g.victory) {
             computeFov(g);
             draw(ctx,g,'playing');
             const key=await waitKey();
@@ -1164,6 +1225,7 @@ async function playGame() {
                 for (const it of g.items) {
                     if (it.x===g.player.x&&it.y===g.player.y&&it.type==='stairs') {
                         g.dlvl++; g.add_msg('Descend to level '+g.dlvl);
+                        if (g.dlvl>(getScore().best)) { const s=getScore(); s.best=g.dlvl; saveScore(s); }
                         genLevel(g); computeFov(g);
                         g.messages=g.messages.slice(-10);
                         g.add_msg('You arrive on a new floor');
@@ -1190,7 +1252,8 @@ async function playGame() {
                 if (nx>0&&nx<g.MAP_W-1&&ny>0&&ny<g.MAP_H-1) {
                     const enemy=g.entities.find(e=>e!==g.player&&e.x===nx&&e.y===ny&&e.hp>0);
                     if (enemy) {
-                        await battleScreen(g,enemy,true);
+                        const r=await battleScreen(g,enemy,true);
+                        if (r==='victory') { g.victory=true; break; }
                         acted=true;
                     } else if (g.map[ny][nx]!==35) {
                         g.player.x=nx; g.player.y=ny;
@@ -1208,12 +1271,36 @@ async function playGame() {
 
             if (acted) {
                 const monster=monsterTick(g);
-                if (monster) await battleScreen(g,monster,false);
+                if (monster) {
+                    const r=await battleScreen(g,monster,false);
+                    if (r==='victory') { g.victory=true; break; }
+                }
             }
             if (g.player.hp<=0) { g.game_over=true; draw(ctx,g,'playing'); }
         }
 
+        if (g&&g.victory) {
+            saveAutosave(g);
+            clearAutosave();
+            const result=await victoryScreen(g);
+            if (result==='strong') {
+                saved={
+                    max_hp:g.player.max_hp, hp:g.player.max_hp,
+                    patk:g.player.patk, matk:g.player.matk,
+                    pdef:g.player.pdef, mdef:g.player.mdef,
+                    crit_rate:g.player.crit_rate, crit_dmg:g.player.crit_dmg,
+                    gold:g.player.gold, xp:g.player.xp,
+                    inventory:[...g.player.inventory],
+                    weapon_item:g.player.weapon_item,
+                    armor_item:g.player.armor_item,
+                };
+                continue;
+            } else if (result==='new') continue;
+            else return;
+        }
+
         if (g&&g.game_over) {
+            const s=getScore(); s.attempts++; saveScore(s);
             const result=await gameOverScreen(g);
             if (result==='restart') { clearAutosave(); continue; }
             else if (result==='strong') {
