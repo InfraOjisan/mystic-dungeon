@@ -981,6 +981,18 @@ async function saveSlotSelector(g) {
     }
 }
 
+async function difficultyScreen() {
+    ctx.fillStyle=C.bg; ctx.fillRect(0,0,canvasW,canvasH);
+    drawTitle(ctx,null,{hasSaves:false,hasAutosave:false});
+    while (true) {
+        const k=await waitKey();
+        if (k==='1') return 1;
+        if (k==='2') return 2;
+        if (k==='3') return 3;
+        if (k==='q'||k==='Q') return null;
+    }
+}
+
 async function gameOverScreen(g) {
     draw(ctx,g,'gameover');
     while (true) {
@@ -1169,11 +1181,7 @@ async function playGame() {
             if (!loadAutosave(g)) continue;
             g.add_msg('Continue from autosave...');
         } else if (result[0]==='new') {
-            const diff=result[1]||(await (async()=>{
-                const r=await titleScreen();
-                if (!r||r[0]==='quit') return null;
-                return r[1];
-            })());
+            const diff=result[1]||(await difficultyScreen());
             if (!diff) return;
 
             clearAutosave();
