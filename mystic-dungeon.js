@@ -1155,8 +1155,9 @@ async function shopScreen(g) {
 // ── Main Game Loop ───────────────────────────────────────────────────────
 async function playGame() {
     while (true) {
-        const result=await titleScreen();
-        if (!result||result[0]==='quit') return;
+        try {
+            const result=await titleScreen();
+            if (!result||result[0]==='quit') return;
 
         if (result[0]==='load') {
             g=new Game(2);
@@ -1294,15 +1295,15 @@ async function playGame() {
                     weapon_item:g.player.weapon_item,
                     armor_item:g.player.armor_item,
                 };
-                continue;
-            } else if (result==='new') continue;
-            else return;
+                g=null; continue;
+            } else if (result==='new') { g=null; continue; }
+            else { g=null; return; }
         }
 
         if (g&&g.game_over) {
             const s=getScore(); s.attempts++; saveScore(s);
             const result=await gameOverScreen(g);
-            if (result==='restart') { clearAutosave(); continue; }
+            if (result==='restart') { clearAutosave(); g=null; continue; }
             else if (result==='strong') {
                 clearAutosave();
                 saved={
@@ -1315,9 +1316,10 @@ async function playGame() {
                     weapon_item:g.player.weapon_item,
                     armor_item:g.player.armor_item,
                 };
-                continue;
-            } else return;
+                g=null; continue;
+            } else { g=null; return; }
         }
+        } catch(e) { console.error('Game error:',e); g=null; continue; }
     }
 }
 
