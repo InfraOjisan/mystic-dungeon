@@ -746,8 +746,9 @@ function drawInventory(ctx,g,extra) {
     ctx.fillStyle=C.panel; ctx.strokeStyle=C.border; ctx.lineWidth=2;
     ctx.fillRect(ox,oy,bw,bh); ctx.strokeRect(ox,oy,bw,bh);
     ctx.textAlign='left';
+    const dropMode=extra&&extra.dropMode;
     ctx.fillStyle=C.title; ctx.font='bold 16px monospace';
-    ctx.fillText('Inventory',ox+15,oy+25);
+    ctx.fillText(dropMode?'DROP ITEM':'Inventory',ox+15,oy+25);
     const p=g.player;
     ctx.fillStyle=C.text; ctx.font='13px monospace';
     ctx.fillText('Weapon: '+(p.weapon_item?p.weapon_item.name:'Fist'), ox+15, oy+50);
@@ -758,30 +759,31 @@ function drawInventory(ctx,g,extra) {
     } else {
         for (let i=0;i<p.inventory.length;i++) {
             const it=p.inventory[i];
-            let extra='';
+            let itemInfo='';
             if (it.type==='weapon') {
-                extra=it.attack_type===ATK_MAGIC?' M+'+it.matk:' P+'+it.patk;
-                extra+=' C'+Math.floor(it.crit_rate*100)+'%';
+                itemInfo=it.attack_type===ATK_MAGIC?' M+'+it.matk:' P+'+it.patk;
+                itemInfo+=' C'+Math.floor(it.crit_rate*100)+'%';
             } else if (it.type==='armor') {
-                extra=' PD+'+it.pdef+' MD+'+it.mdef;
+                itemInfo=' PD+'+it.pdef+' MD+'+it.mdef;
             }
             const rtag=RARITY_NAME[it.rarity];
             ctx.fillStyle=C.rarity[it.rarity]||C.text;
             ctx.font='12px monospace';
-            ctx.fillText('['+(i+1)+'] '+it.emoji+' '+it.name+rtag+extra, ox+20, ly);
+            ctx.fillText('['+(i+1)+'] '+it.emoji+' '+it.name+rtag+itemInfo, ox+20, ly);
             ly+=18;
         }
     }
     ctx.fillStyle=C.dim; ctx.font='12px monospace';
-    ctx.fillText('1-9: use/equip  d: drop  q: exit', ox+15, oy+bh-15);
+    ctx.fillText(dropMode?'Select number to drop, [q] cancel':'1-9: use/equip  d: drop  q: exit', ox+15, oy+bh-15);
 }
 function drawShop(ctx,g,extra) {
     const ox=Math.max(0,(canvasW-460)/2), oy=Math.max(0,(canvasH-380)/2), bw=460, bh=380;
     ctx.fillStyle=C.panel; ctx.strokeStyle=C.border; ctx.lineWidth=2;
     ctx.fillRect(ox,oy,bw,bh); ctx.strokeRect(ox,oy,bw,bh);
     ctx.textAlign='left';
+    const sellMode=extra&&extra.sellMode;
     ctx.fillStyle=C.title; ctx.font='bold 16px monospace';
-    ctx.fillText('SHOP',ox+15,oy+25);
+    ctx.fillText(sellMode?'SHOP — SELL MODE':'SHOP',ox+15,oy+25);
     ctx.fillStyle=C.gold; ctx.font='13px monospace';
     ctx.fillText('Gold: '+g.player.gold, ox+350, oy+25);
     ctx.fillStyle=C.text; ctx.font='bold 13px monospace';
@@ -790,7 +792,7 @@ function drawShop(ctx,g,extra) {
     for (let i=0;i<extra.shop.length;i++) {
         const it=extra.shop[i];
         const rtag=RARITY_NAME[it.rarity];
-        ctx.fillStyle=C.rarity[it.rarity]||C.text; ctx.font='12px monospace';
+        ctx.fillStyle=sellMode?C.dim:(C.rarity[it.rarity]||C.text); ctx.font='12px monospace';
         const info=it.type==='weapon'?'P+'+it.patk+' M+'+it.matk:'PD+'+it.pdef+' MD+'+it.mdef;
         ctx.fillText('['+(i+1)+'] '+it.name+rtag+' '+info+' $'+it.value, ox+20, ly);
         ly+=18;
@@ -801,12 +803,12 @@ function drawShop(ctx,g,extra) {
     for (let i=0;i<Math.min(extra.sell.length,6);i++) {
         const it=extra.sell[i];
         const val=Math.max(1,Math.floor(it.value/2));
-        ctx.fillStyle=C.text; ctx.font='12px monospace';
-        ctx.fillText('[s'+(i+1)+'] '+it.name+' $'+val, ox+20, ly);
+        ctx.fillStyle=sellMode?C.hp:C.text; ctx.font='12px monospace';
+        ctx.fillText('['+(i+1)+'] '+it.name+' $'+val, ox+20, ly);
         ly+=18;
     }
-    ctx.fillStyle=C.dim; ctx.font='12px monospace';
-    ctx.fillText('1-9: buy  s1-9: sell  q: exit', ox+15, oy+bh-15);
+    ctx.fillStyle=C.prompt; ctx.font='12px monospace';
+    ctx.fillText(sellMode?'Select number to sell, [s] cancel, [q] exit':'1-9: buy  s: sell mode  q: exit', ox+15, oy+bh-15);
 }
 function drawMapView(ctx,g) {
     ctx.fillStyle=C.bg; ctx.fillRect(0,0,canvasW,canvasH);
@@ -1027,7 +1029,7 @@ async function inventoryFlow(g) {
 
 async function dropFlow(g) {
     while (true) {
-        draw(ctx,g,'inventory');
+        draw(ctx,g,'inventory',{dropMode:true});
         const k=await waitKey();
         if (k==='q'||k==='escape') return;
         if (k>='1'&&k<='9') {
@@ -1051,36 +1053,39 @@ async function shopScreen(g) {
         r.value=Math.max(10,Math.floor((r.value+r.patk*30+r.matk*30+r.pdef*25+r.mdef*25)*g.shopPriceMul));
         shop.push(r);
     }
+    let sellMode=false;
     while (true) {
         const sellItems=g.player.inventory.filter(it=>['weapon','armor','potion_heal','food','potion_str'].includes(it.type));
-        draw(ctx,g,'shop',{shop,sell:sellItems});
+        draw(ctx,g,'shop',{shop,sell:sellItems,sellMode});
         const k=await waitKey();
-        if (k==='q'||k==='escape') return;
-        if (k>='1'&&k<='9') {
+        if (k==='q'||k==='escape') { if (sellMode) sellMode=false; else return; }
+        else if (k==='s') { sellMode=!sellMode; }
+        else if (k>='1'&&k<='9') {
             const idx=parseInt(k)-1;
-            if (idx<shop.length&&g.player.gold>=shop[idx].value) {
-                g.player.gold-=shop[idx].value;
-                if (g.player.inventory.length<10) {
-                    shop[idx].x=0; shop[idx].y=0;
-                    g.player.inventory.push(shop[idx]);
-                    g.add_msg('Bought '+shop[idx].name+' for $'+shop[idx].value);
-                    shop.splice(idx,1);
-                } else g.add_msg('Inventory full!');
-            }
-        }
-        if (k.startsWith('s')&&k.length>1) {
-            const idx=parseInt(k.slice(1))-1;
-            if (idx<sellItems.length) {
-                const it=sellItems[idx];
-                const val=Math.max(1,Math.floor(it.value/2));
-                g.player.gold+=val;
-                const i=g.player.inventory.indexOf(it);
-                if (i>=0) {
-                    if (it===g.player.weapon_item) g.player.weapon_item=null;
-                    if (it===g.player.armor_item) g.player.armor_item=null;
-                    g.player.inventory.splice(i,1);
+            if (sellMode) {
+                if (idx<sellItems.length) {
+                    const it=sellItems[idx];
+                    const val=Math.max(1,Math.floor(it.value/2));
+                    g.player.gold+=val;
+                    const i=g.player.inventory.indexOf(it);
+                    if (i>=0) {
+                        if (it===g.player.weapon_item) g.player.weapon_item=null;
+                        if (it===g.player.armor_item) g.player.armor_item=null;
+                        g.player.inventory.splice(i,1);
+                    }
+                    g.add_msg('Sold '+it.name+' for $'+val);
+                    sellMode=false;
                 }
-                g.add_msg('Sold '+it.name+' for $'+val);
+            } else {
+                if (idx<shop.length&&g.player.gold>=shop[idx].value) {
+                    g.player.gold-=shop[idx].value;
+                    if (g.player.inventory.length<10) {
+                        shop[idx].x=0; shop[idx].y=0;
+                        g.player.inventory.push(shop[idx]);
+                        g.add_msg('Bought '+shop[idx].name+' for $'+shop[idx].value);
+                        shop.splice(idx,1);
+                    } else g.add_msg('Inventory full!');
+                }
             }
         }
     }
